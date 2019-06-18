@@ -35,6 +35,13 @@ config ST25R3911B_IRQ_PIN
 	help
 	  Configure an IRQ pin for ST25R3911B
 
+config ST25R3911B_ANTENNA_POWER_REDUCTION
+	int "ST25R3911B antenna power reduction"
+	default 240
+	help
+	  Turn off a part of antenna segments according to ST25R3911B
+	  documentation, register RFO Normal Level Definition Register.
+
 module = ST25R3911B_LIB
 module-str = ST25R3911B
 source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"

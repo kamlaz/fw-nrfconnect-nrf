@@ -44,6 +44,7 @@ LOG_MODULE_DECLARE(st25r3911b);
 #define FIFO_TX_WATER_16_EMPTY (ST25R3911B_MAX_FIFO_LEN - FIFO_TX_WATER_LVL_16)
 #define FIFO_TX_WATER_32_EMPTY (ST25R3911B_MAX_FIFO_LEN - FIFO_TX_WATER_LVL_32)
 
+
 static struct device *gpio_dev;
 
 static int command_process(u8_t cmd, u32_t *irq_mask, u32_t timeout)
@@ -167,6 +168,46 @@ static int measure_voltage(u8_t source, u32_t *voltage)
 	*voltage = result;
 
 	LOG_DBG("Measured supply voltage %u mV", result);
+
+	return 0;
+}
+
+static int calibrate_modulation(u8_t segments_off)
+{
+	int err;
+	u8_t reg = 0;
+	u32_t irq_mask = 0;
+
+	err = st25r3911b_reg_read(ST25R3911B_REG_AM_MOD_DEPTH_CTRL, &reg);
+	if (err) {
+		return err;
+	}
+
+	/* Check if is possoble to automatic calibration. */
+	if (reg & ST25R3911B_REG_AM_MOD_DEPTH_CTRL_AM_S) {
+		LOG_ERR("Modulation depth calibration is not possible");
+		return -EACCES;
+	}
+
+	/* Turn off some part of antenna segments. */
+	err = st25r3911b_reg_write(ST25R3911B_REG_RFO_NORMAL_LVL_DEF,
+				   segments_off);
+	if (err) {
+		return err;
+	}
+
+	LOG_DBG("Wait for modulation calibrationi %u ms", T_COMMON_CMD);
+
+	irq_mask = ST25R3911B_IRQ_MASK_DCT;
+
+	err = command_process(ST25R3911B_CMD_CALIBRATE_MODULATION,
+			      &irq_mask,
+			      T_COMMON_CMD);
+	if (err) {
+		return err;
+	}
+
+	LOG_DBG("Modulation calibration success");
 
 	return 0;
 }
@@ -415,6 +456,12 @@ int st25r3911b_init(void)
 	err = adjust_regulator(&mV);
 	if (err) {
 		LOG_ERR("Regulator adjust failed");
+		return err;
+	}
+
+	/* Calibrate modulation. */
+	err = calibrate_modulation(CONFIG_ST25R3911B_ANTENNA_POWER_REDUCTION);
+	if (err) {
 		return err;
 	}
 
