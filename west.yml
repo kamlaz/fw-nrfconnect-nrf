@@ -27,6 +27,8 @@ manifest:
       # nRF Connect SDK base URL.
     - name: ncs
       url-base: https://github.com/NordicPlayground
+    - name: kaga
+      url-base: https://github.com/KAGA164
     - name: zephyrproject
       url-base: https://github.com/zephyrproject-rtos
     - name: throwtheswitch
@@ -40,7 +42,8 @@ manifest:
     - name: fw-nrfconnect-zephyr
       path: zephyr
       west-commands: scripts/west-commands.yml
-      revision: 7e64ac737daead12d2dbdda5daec04188243a81c
+      revision: 05ca902c9157bddfead56255cf3201c8f00a22d8
+      remote: kaga
     - name: nffs
       revision: bc62a2fa9d98ddb5d633c932ea199bc68e10f194
       path: modules/fs/nffs
