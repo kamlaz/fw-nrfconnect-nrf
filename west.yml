@@ -31,6 +31,8 @@ manifest:
       url-base: https://github.com/ARMmbed
     - name: civetweb
       url-base: https://github.com/civetweb
+    - name: kaga
+      url-base: https://github.com/KAGA164
 
   # The list of external projects for the nRF Connect SDK.
   #
@@ -38,7 +40,8 @@ manifest:
     - name: zephyr
       repo-path: fw-nrfconnect-zephyr
       west-commands: scripts/west-commands.yml
-      revision: 9be97c63368aa5ddfb7613446794a3ec85801a49
+      revision: 6645dec1b8f3e49bca1589c67da09c2e8227b422
+      remote: kaga
     - name: nffs
       revision: bc62a2fa9d98ddb5d633c932ea199bc68e10f194
       path: modules/fs/nffs
@@ -72,7 +75,8 @@ manifest:
       revision: 30b7efa827b04d2e47840716b0372737fe7d6c92
     - name: nrfxlib
       path: nrfxlib
-      revision: 52afb8282f4369204d1096121dd31485c479196a
+      revision: a767f77e325aa1e92527da053880032c70c0f272
+      remote: kaga
     - name: cmock
       path: test/cmock
       revision: c243b9a7a7b3c471023193992b46cf1bd1910450
@@ -102,8 +106,8 @@ manifest:
       revision: df96914dd989907f3a5de4cb95b116c2f305820d
     - name: hal_nordic
       path: modules/hal/nordic
-      remote: zephyrproject
-      revision: 1b14177ff2176a1d17f3dd5e7e217f44337255db
+      remote: kaga
+      revision: d97c09f58fb9b3dfd4bda9ea6de744fcbbc4e2a5
     - name: hal_st
       path: modules/hal/st
       remote: zephyrproject
