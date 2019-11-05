@@ -34,9 +34,9 @@ manifest:
   #
   projects:
     - name: zephyr
-      repo-path: fw-nrfconnect-zephyr
+      repo-path: _fw-nrfconnect-nrf53-zephyr
       west-commands: scripts/west-commands.yml
-      revision: 40b430ba977cfea2cf733248d79d99ef0b57c19e
+      revision: master
     - name: nffs
       revision: bc62a2fa9d98ddb5d633c932ea199bc68e10f194
       path: modules/fs/nffs

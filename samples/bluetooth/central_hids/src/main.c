@@ -56,6 +56,10 @@ static u8_t capslock_state;
 static void hids_on_ready(struct k_work *work);
 static K_WORK_DEFINE(hids_ready_work, hids_on_ready);
 
+static bt_addr_le_t addr_abb= {
+	.type = BT_ADDR_LE_PUBLIC,	
+	.a.val = {0xF0, 0xE7, 0x73, 0xEE, 0xF3, 0x0C}
+};
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      struct bt_scan_filter_match *filter_match,
@@ -112,10 +116,12 @@ static void discovery_completed_cb(struct bt_gatt_dm *dm,
 
 	bt_gatt_dm_data_print(dm);
 
-	err = bt_gatt_hids_c_handles_assign(dm, &hids_c);
-	if (err) {
-		printk("Could not init HIDS client object, error: %d\n", err);
-	}
+	//err = bt_gatt_hids_c_handles_assign(dm, &hids_c);
+	//if (err) {
+	//	printk("Could not init HIDS client object, error: %d\n", err);
+	//}
+	//
+	bt_gatt_dm_service_get(dm);
 
 	err = bt_gatt_dm_data_release(dm);
 	if (err) {
@@ -222,14 +228,14 @@ static void scan_init(void)
 	bt_scan_init(&scan_init);
 	bt_scan_cb_register(&scan_cb);
 
-	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, BT_UUID_HIDS);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr_abb);
 	if (err) {
 		printk("Scanning filters cannot be set (err %d)\n", err);
 
 		return;
 	}
 
-	err = bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
+	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
 	if (err) {
 		printk("Filters cannot be turned on (err %d)\n", err);
 	}
@@ -519,7 +525,7 @@ static void gatt_discover(struct bt_conn *conn)
 {
 	if (conn == default_conn) {
 		int err = bt_gatt_dm_start(conn,
-					   BT_UUID_HIDS,
+					   NULL,
 					   &discovery_cb,
 					   NULL);
 		if (err) {
