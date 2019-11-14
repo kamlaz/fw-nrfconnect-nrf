@@ -14,3 +14,6 @@ if (CONFIG_NFC_T4T_ISODEP OR
     CONFIG_NFC_T4T_APDU)
 	add_subdirectory(t4t)
 endif()
+
+zephyr_library()
+zephyr_library_sources(nfc_platform_zephyr.c)
