@@ -14,15 +14,22 @@ LOG_MODULE_REGISTER(nfc_platform, CONFIG_NFC_PLATFORM_LOG_LEVEL);
 
 struct device *clock;
 
+static void clock_handler(struct device *dev, void *user_data)
+{
+	/* Activate NFCT only when HFXO is running */
+	nrfx_nfct_state_force(NRFX_NFCT_STATE_ACTIVATED);
+}
+
+
+static struct clock_control_async_data clock_ctrl = {
+	.cb = clock_handler
+};
+
+
 nrfx_err_t nfc_platform_setup(void)
 {
-	int err;
-
 	clock = device_get_binding(DT_INST_0_NORDIC_NRF_CLOCK_LABEL "_16M");
 	__ASSERT_NO_MSG(clock);
-
-	err = clock_control_on(clock, (void *)1);
-	__ASSERT_NO_MSG(!err);
 
 	IRQ_DIRECT_CONNECT(NFCT_IRQn, CONFIG_NFCT_IRQ_PRIORITY,
 			   nrfx_nfct_irq_handler, 0);
@@ -36,15 +43,23 @@ nrfx_err_t nfc_platform_setup(void)
 
 void nfc_platform_event_handler(nrfx_nfct_evt_t const *event)
 {
+	int err;
+
 	switch (event->evt_id) {
 	case NRFX_NFCT_EVT_FIELD_DETECTED:
 		LOG_DBG("Field detected");
-		/* Activate NFCT only when HFXO is running */
-		nrfx_nfct_state_force(NRFX_NFCT_STATE_ACTIVATED);
+
+		err = clock_control_async_on(clock, (void *)1, &clock_ctrl);
+		__ASSERT_NO_MSG(!err);
+
 		break;
 
 	case NRFX_NFCT_EVT_FIELD_LOST:
 		LOG_DBG("Field lost");
+
+		err = clock_control_off(clock, (void *)1);
+		__ASSERT_NO_MSG(!err);
+
 		break;
 
 	default:
