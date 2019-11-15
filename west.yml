@@ -31,6 +31,8 @@ manifest:
       url-base: https://github.com/ARMmbed
     - name: civetweb
       url-base: https://github.com/civetweb
+    - name: kaga
+      url-base: https://github.com/KAGA164
 
   # The list of external projects for the nRF Connect SDK.
   #
@@ -72,7 +74,8 @@ manifest:
       revision: 30b7efa827b04d2e47840716b0372737fe7d6c92
     - name: nrfxlib
       path: nrfxlib
-      revision: 52afb8282f4369204d1096121dd31485c479196a
+      revision: 846cf10d954f10973c67f7989b231ce871517fa5
+      remote: kaga
     - name: cmock
       path: test/cmock
       revision: c243b9a7a7b3c471023193992b46cf1bd1910450
