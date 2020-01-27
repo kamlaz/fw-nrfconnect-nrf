@@ -28,8 +28,13 @@
 
 #include <stdio.h>
 
-#define STACKSIZE               CONFIG_BT_GATT_NUS_THREAD_STACK_SIZE
-#define PRIORITY                7
+#include <logging/log.h>
+
+#define LOG_MODULE_NAME peripheral_uart
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
+
+#define STACKSIZE CONFIG_BT_GATT_NUS_THREAD_STACK_SIZE
+#define PRIORITY 7
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN	        (sizeof(DEVICE_NAME) - 1)
@@ -163,12 +168,12 @@ static void connected(struct bt_conn *conn, u8_t err)
 	char addr[BT_ADDR_LE_STR_LEN];
 
 	if (err) {
-		printk("Connection failed (err %u)\n", err);
+		LOG_ERR("Connection failed (err %u)", err);
 		return;
 	}
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-	printk("Connected %s\n", addr);
+	LOG_INF("Connected %s", log_strdup(addr));
 
 	current_conn = bt_conn_ref(conn);
 
@@ -181,7 +186,7 @@ static void disconnected(struct bt_conn *conn, u8_t reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Disconnected: %s (reason %u)\n", addr, reason);
+	LOG_INF("Disconnected: %s (reason %u)", log_strdup(addr), reason);
 
 	if (auth_conn) {
 		bt_conn_unref(auth_conn);
@@ -204,9 +209,9 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	if (!err) {
-		printk("Security changed: %s level %u\n", addr, level);
+		LOG_INF("Security changed: %s level %u", log_strdup(addr), level);
 	} else {
-		printk("Security failed: %s level %u err %d\n", addr, level,
+		LOG_WRN("Security failed: %s level %u err %d", log_strdup(addr), level,
 			err);
 	}
 }
@@ -227,7 +232,7 @@ static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Passkey for %s: %06u\n", addr, passkey);
+	LOG_INF("Passkey for %s: %06u", log_strdup(addr), passkey);
 }
 
 static void auth_passkey_confirm(struct bt_conn *conn, unsigned int passkey)
@@ -238,8 +243,8 @@ static void auth_passkey_confirm(struct bt_conn *conn, unsigned int passkey)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Passkey for %s: %06u\n", addr, passkey);
-	printk("Press Button 1 to confirm, Button 2 to reject.\n");
+	LOG_INF("Passkey for %s: %06u", log_strdup(addr), passkey);
+	LOG_INF("Press Button 1 to confirm, Button 2 to reject.");
 }
 
 
@@ -249,7 +254,7 @@ static void auth_cancel(struct bt_conn *conn)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing cancelled: %s\n", addr);
+	LOG_INF("Pairing cancelled: %s\n", log_strdup(addr));
 }
 
 
@@ -261,7 +266,7 @@ static void pairing_confirm(struct bt_conn *conn)
 
 	bt_conn_auth_pairing_confirm(conn);
 
-	printk("Pairing confirmed: %s\n", addr);
+	LOG_INF("Pairing confirmed: %s", log_strdup(addr));
 }
 
 
@@ -271,7 +276,7 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing completed: %s, bonded: %d\n", addr, bonded);
+	LOG_INF("Pairing completed: %s, bonded: %d", log_strdup(addr), bonded);
 }
 
 
@@ -281,7 +286,7 @@ static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing failed conn: %s, reason %d\n", addr, reason);
+	LOG_INF("Pairing failed conn: %s, reason %d", log_strdup(addr), reason);
 }
 
 
@@ -304,13 +309,13 @@ static void bt_receive_cb(struct bt_conn *conn, const u8_t *const data,
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, ARRAY_SIZE(addr));
 
-	printk("Received data from: %s\n", addr);
+	LOG_INF("Received data from: %s", log_strdup(addr));
 
 	for (u16_t pos = 0; pos != len;) {
 		struct uart_data_t *tx = k_malloc(sizeof(*tx));
 
 		if (!tx) {
-			printk("Not able to allocate UART send data buffer\n");
+			LOG_WRN("Not able to allocate UART send data buffer");
 			return;
 		}
 
@@ -360,10 +365,10 @@ static void num_comp_reply(bool accept)
 {
 	if (accept) {
 		bt_conn_auth_passkey_confirm(auth_conn);
-		printk("Numeric Match, conn %p\n", auth_conn);
+		LOG_INF("Numeric Match, conn %p", auth_conn);
 	} else {
 		bt_conn_auth_cancel(auth_conn);
-		printk("Numeric Reject, conn %p\n", auth_conn);
+		LOG_INF("Numeric Reject, conn %p", auth_conn);
 	}
 
 	bt_conn_unref(auth_conn);
@@ -391,12 +396,12 @@ static void configure_gpio(void)
 
 	err = dk_buttons_init(button_changed);
 	if (err) {
-		printk("Cannot init buttons (err: %d)\n", err);
+		LOG_WRN("Cannot init buttons (err: %d)", err);
 	}
 
 	err = dk_leds_init();
 	if (err) {
-		printk("Cannot init LEDs (err: %d)\n", err);
+		LOG_WRN("Cannot init LEDs (err: %d)", err);
 	}
 }
 
@@ -425,7 +430,7 @@ static void led_blink_thread(void)
 		error();
 	}
 
-	printk("Bluetooth initialized\n");
+	LOG_INF("Bluetooth initialized");
 	k_sem_give(&ble_init_ok);
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
@@ -434,14 +439,14 @@ static void led_blink_thread(void)
 
 	err = bt_gatt_nus_init(&nus_cb);
 	if (err) {
-		printk("Failed to initialize UART service (err: %d)\n", err);
+		LOG_ERR("Failed to initialize UART service (err: %d)", err);
 		return;
 	}
 
 	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd,
 			      ARRAY_SIZE(sd));
 	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
+		LOG_ERR("Advertising failed to start (err %d)", err);
 	}
 
 	for (;;) {
@@ -461,7 +466,7 @@ void ble_write_thread(void)
 						     K_FOREVER);
 
 		if (bt_gatt_nus_send(NULL, buf->data, buf->len)) {
-			printk("Failed to send data over BLE connection\n");
+			LOG_WRN("Failed to send data over BLE connection");
 		}
 		k_free(buf);
 	}
