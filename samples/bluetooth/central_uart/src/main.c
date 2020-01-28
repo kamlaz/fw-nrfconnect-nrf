@@ -28,6 +28,11 @@
 
 #include <uart.h>
 
+#include <logging/log.h>
+
+#define LOG_MODULE_NAME central_uart
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
+
 /* UART payload buffer element size. */
 #define UART_BUF_SIZE 20
 
@@ -57,7 +62,7 @@ static void ble_data_sent(u8_t err, const u8_t *const data, u16_t len)
 	k_free(buf);
 
 	if (err) {
-		printk("ATT error code: 0x%02X\n", err);
+		LOG_WRN("ATT error code: 0x%02X", err);
 	}
 }
 
@@ -67,7 +72,7 @@ static u8_t ble_data_received(const u8_t *const data, u16_t len)
 		struct uart_data_t *tx = k_malloc(sizeof(*tx));
 
 		if (!tx) {
-			printk("Not able to allocate UART send data buffer\n");
+			LOG_WRN("Not able to allocate UART send data buffer");
 			return BT_GATT_ITER_CONTINUE;
 		}
 
@@ -115,7 +120,7 @@ static void uart_cb(struct device *uart)
 			if (rx) {
 				rx->len = 0;
 			} else {
-				printk("Not able to allocate UART receive buffer\n");
+				LOG_WRN("Not able to allocate UART receive buffer");
 				return;
 			}
 		}
@@ -173,7 +178,7 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 			       void *context)
 {
 	struct bt_gatt_nus_c *nus_c = context;
-	printk("Service discovery completed\n");
+	LOG_INF("Service discovery completed");
 
 	bt_gatt_dm_data_print(dm);
 
@@ -186,14 +191,14 @@ static void discovery_complete(struct bt_gatt_dm *dm,
 static void discovery_service_not_found(struct bt_conn *conn,
 					void *context)
 {
-	printk("Service not found\n");
+	LOG_WRN("Service not found");
 }
 
 static void discovery_error(struct bt_conn *conn,
 			    int err,
 			    void *context)
 {
-	printk("Error while discovering GATT database: (%d)\n", err);
+	LOG_WRN("Error while discovering GATT database: (%d)", err);
 }
 
 struct bt_gatt_dm_cb discovery_cb = {
@@ -215,8 +220,8 @@ static void gatt_discover(struct bt_conn *conn)
 			       &discovery_cb,
 			       &gatt_nus_c);
 	if (err) {
-		printk("could not start the discovery procedure, error "
-			"code: %d\n", err);
+		LOG_ERR("could not start the discovery procedure, error "
+			"code: %d", err);
 	}
 }
 
@@ -228,22 +233,23 @@ static void connected(struct bt_conn *conn, u8_t conn_err)
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	if (conn_err) {
-		printk("Failed to connect to %s (%d)\n", addr, conn_err);
+		LOG_ERR("Failed to connect to %s (%d)", log_strdup(addr),
+			conn_err);
 		return;
 	}
 
-	printk("Connected: %s\n", addr);
+	LOG_INF("Connected: %s", log_strdup(addr));
 
 	err = bt_conn_set_security(conn, BT_SECURITY_L2);
 	if (err) {
-		printk("Failed to set security: %d\n", err);
+		LOG_WRN("Failed to set security: %d", err);
 
 		gatt_discover(conn);
 	}
 
 	err = bt_scan_stop();
 	if ((!err) && (err != -EALREADY)) {
-		printk("Stop LE scan failed (err %d)\n", err);
+		LOG_ERR("Stop LE scan failed (err %d)", err);
 	}
 }
 
@@ -254,7 +260,7 @@ static void disconnected(struct bt_conn *conn, u8_t reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Disconnected: %s (reason %u)\n", addr, reason);
+	LOG_INF("Disconnected: %s (reason %u)", log_strdup(addr), reason);
 
 	if (default_conn != conn) {
 		return;
@@ -265,7 +271,7 @@ static void disconnected(struct bt_conn *conn, u8_t reason)
 
 	err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
 	if (err) {
-		printk("Scanning failed to start (err %d)\n", err);
+		LOG_ERR("Scanning failed to start (err %d)", err);
 	}
 }
 
@@ -277,10 +283,11 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	if (!err) {
-		printk("Security changed: %s level %u\n", addr, level);
+		LOG_INF("Security changed: %s level %u", log_strdup(addr),
+			level);
 	} else {
-		printk("Security failed: %s level %u err %d\n", addr, level,
-			err);
+		LOG_INF("Security failed: %s level %u err %d",
+			log_strdup(addr), level, err);
 	}
 
 	gatt_discover(conn);
@@ -300,13 +307,13 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 
 	bt_addr_le_to_str(device_info->addr, addr, sizeof(addr));
 
-	printk("Filters matched. Address: %s connectable: %d\n",
-		addr, connectable);
+	LOG_INF("Filters matched. Address: %s connectable: %d",
+		log_strdup(addr), connectable);
 }
 
 static void scan_connecting_error(struct bt_scan_device_info *device_info)
 {
-	printk("Connecting failed\n");
+	LOG_WRN("Connecting failed");
 }
 
 static void scan_connecting(struct bt_scan_device_info *device_info,
@@ -319,14 +326,14 @@ static int uart_init(void)
 {
 	uart = device_get_binding(DT_UART_0_NAME);
 	if (!uart) {
-		printk("UART binding failed\n");
+		LOG_ERR("UART binding failed");
 		return -ENXIO;
 	}
 
 	uart_irq_callback_set(uart, uart_cb);
 	uart_irq_rx_enable(uart);
 
-	printk("UART initialized\n");
+	LOG_INF("UART initialized");
 	return 0;
 }
 
@@ -342,11 +349,11 @@ static int nus_client_init(void)
 
 	err = bt_gatt_nus_c_init(&gatt_nus_c, &nus_c_init_obj);
 	if (err) {
-		printk("NUS Client initialization failed (err %d)\n", err);
+		LOG_ERR("NUS Client initialization failed (err %d)", err);
 		return err;
 	}
 
-	printk("NUS Client module initialized\n");
+	LOG_INF("NUS Client module initialized");
 	return err;
 }
 
@@ -365,17 +372,17 @@ static int scan_init(void)
 
 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, BT_UUID_NUS_SERVICE);
 	if (err) {
-		printk("Scanning filters cannot be set (err %d)\n", err);
+		LOG_ERR("Scanning filters cannot be set (err %d)", err);
 		return err;
 	}
 
 	err = bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
 	if (err) {
-		printk("Filters cannot be turned on (err %d)\n", err);
+		LOG_ERR("Filters cannot be turned on (err %d)", err);
 		return err;
 	}
 
-	printk("Scan module initialized\n");
+	LOG_INF("Scan module initialized");
 	return err;
 }
 
@@ -386,7 +393,7 @@ static void auth_cancel(struct bt_conn *conn)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing cancelled: %s\n", addr);
+	LOG_INF("Pairing cancelled: %s", log_strdup(addr));
 }
 
 
@@ -398,7 +405,7 @@ static void pairing_confirm(struct bt_conn *conn)
 
 	bt_conn_auth_pairing_confirm(conn);
 
-	printk("Pairing confirmed: %s\n", addr);
+	LOG_INF("Pairing confirmed: %s", log_strdup(addr));
 }
 
 
@@ -408,7 +415,8 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing completed: %s, bonded: %d\n", addr, bonded);
+	LOG_INF("Pairing completed: %s, bonded: %d", log_strdup(addr),
+		bonded);
 }
 
 
@@ -418,7 +426,8 @@ static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing failed conn: %s, reason %d\n", addr, reason);
+	LOG_INF("Pairing failed conn: %s, reason %d", log_strdup(addr),
+		reason);
 }
 
 static struct bt_conn_auth_cb conn_auth_callbacks = {
@@ -436,16 +445,16 @@ void main(void)
 
 	err = bt_conn_auth_cb_register(&conn_auth_callbacks);
 	if (err) {
-		printk("Failed to register authorization callbacks.\n");
+		LOG_ERR("Failed to register authorization callbacks.");
 		return;
 	}
 
 	err = bt_enable(NULL);
 	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
+		LOG_ERR("Bluetooth init failed (err %d)", err);
 		return;
 	}
-	printk("Bluetooth initialized\n");
+	LOG_INF("Bluetooth initialized");
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();
@@ -463,10 +472,10 @@ void main(void)
 
 	err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
 	if (err) {
-		printk("Scanning failed to start (err %d)\n", err);
+		LOG_ERR("Scanning failed to start (err %d)", err);
 		return;
 	}
-	printk("Scanning successfully started\n");
+	LOG_INF("Scanning successfully started");
 
 	for (;;) {
 		/* Wait indefinitely for data to be sent over Bluetooth */
@@ -475,8 +484,8 @@ void main(void)
 
 		err = bt_gatt_nus_c_send(&gatt_nus_c, buf->data, buf->len);
 		if (err) {
-			printk("Failed to send data over BLE connection"
-			       "(err %d)\n", err);
+			LOG_WRN("Failed to send data over BLE connection"
+				"(err %d)", err);
 		}
 	}
 }
