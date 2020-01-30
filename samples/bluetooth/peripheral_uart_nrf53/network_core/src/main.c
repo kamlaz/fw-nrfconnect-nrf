@@ -22,14 +22,12 @@
 #include <stdio.h>
 
 #include "bt_ser.h"
+#include "rpmsg.h"
 
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
 
 static struct bt_conn *current_conn;
-
-int ipc_init(void);
-void ipc_register_rx_callback(int (*rx_callback)(const u8_t *data, size_t len));
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),

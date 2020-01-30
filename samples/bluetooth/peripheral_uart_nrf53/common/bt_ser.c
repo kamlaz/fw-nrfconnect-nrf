@@ -16,6 +16,7 @@
 #endif
 
 #include "bt_ser.h"
+#include "rpmsg.h"
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(bt_nus_ser);
@@ -41,7 +42,6 @@ LOG_MODULE_REGISTER(bt_nus_ser);
 
 #define APP_WAIT_FOR_RSP_TIME CONFIG_APP_WAIT_FOR_RESPONSE_TIME
 
-#define WAIT_FOR_RESPONSE_MS 20
 K_SEM_DEFINE(rsp_sem, 0, 1);
 
 typedef int (*cmd_rsp_handler_t)(CborValue *it);
@@ -55,8 +55,6 @@ struct cmd_list {
 static const struct bt_nus_cb *bt_cb;
 static int return_value;
 static cmd_rsp_handler_t rsp_handler;
-
-int ipc_transmit(const u8_t *buff, size_t buff_len, uint32_t timeout);
 
 static int response_code_encode(CborEncoder *encoder, int rsp)
 {
@@ -256,7 +254,7 @@ static int cmd_send(const u8_t *data, size_t length,
 
 	rsp_handler = rsp;
 
-	if (ipc_transmit(data, length, WAIT_FOR_RESPONSE_MS) < 0) {
+	if (ipc_transmit(data, length) < 0) {
 		return -EFAULT;
 	}
 
@@ -325,7 +323,7 @@ static int evt_send(const bt_addr_le_t *addr, u8_t evt,
 
 	LOG_DBG("Sending 0x%02x event", evt);
 
-	return ipc_transmit(buf, buf_len, WAIT_FOR_RESPONSE_MS);
+	return ipc_transmit(buf, buf_len);
 
 error:
 	LOG_ERR("Send event 0x%02x error %d", evt, err);
@@ -425,7 +423,7 @@ static int rsp_send(CborEncoder *encoder, const u8_t *buf)
 
 	buf_len = cbor_encoder_get_buffer_size(encoder, buf);
 
-	return ipc_transmit(buf, buf_len, WAIT_FOR_RESPONSE_MS);
+	return ipc_transmit(buf, buf_len);
 }
 
 static int bt_response_parse(CborValue *it)

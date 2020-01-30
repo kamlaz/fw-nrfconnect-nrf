@@ -22,6 +22,7 @@
 #include <init.h>
 
 #include "bt_ser.h"
+#include "rpmsg.h"
 
 #define STACKSIZE CONFIG_BT_GATT_NUS_THREAD_STACK_SIZE
 #define PRIORITY 7
@@ -47,9 +48,6 @@ struct uart_data_t {
 
 static K_FIFO_DEFINE(fifo_uart_tx_data);
 static K_FIFO_DEFINE(fifo_uart_rx_data);
-
-int ipc_init(void);
-void ipc_register_rx_callback(int (*rx_callback)(const u8_t *data, size_t len));
 
 static int bt_addr_le_to_str(const bt_addr_le_t *addr, char *str,
 			     size_t len)

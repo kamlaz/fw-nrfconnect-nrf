@@ -24,16 +24,6 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(rpmsg);
 
-/**@brief Enums used to distinguish RX and TX direction of operation.
- */
-enum {
-	/* Transmitting is ongoing */
-	TX_ONGOING,
-
-	/* Ready to receive data */
-	RX_READY,
-};
-
 /**@brief RPC structure
  *
  * Contains all used stuff to ensure stable and realiable communication
@@ -42,23 +32,11 @@ struct rpc_ctx {
 	/* Pointer to RX callback */
 	int (*rx_callback)(const u8_t *data, size_t len);
 
-	/* Sync semaphore */
-	struct k_sem sync;
-
 	/* RX data semaphore */
 	struct k_sem data_rx_sem;
 
-	/* TX data semaphore */
-	struct k_sem data_tx_sem;
-
 	/* Endpoint semaphore */
 	struct k_sem ept_sem;
-
-	/* Current status */
-	u8_t status;
-
-	/* Holds response from TX */
-	u8_t response;
 };
 
 /* Stack size of stack area used by each thread */
@@ -92,23 +70,24 @@ struct rpmsg_device *rdev;
 
 static metal_phys_addr_t shm_physmap[] = { SHM_START_ADDR };
 static struct metal_device shm_device = {
-		.name = SHM_DEVICE_NAME,
-		.bus = NULL,
-		.num_regions = 1,
-		.regions = {
-			{
-				.virt = (void *)SHM_START_ADDR,
-				.physmap = shm_physmap,
-				.size = SHM_SIZE,
-				.page_shift = 0xffffffff,
-				.page_mask = 0xffffffff,
-				.mem_flags = 0,
-				.ops = { NULL },
-			},
+	.name = SHM_DEVICE_NAME,
+	.bus = NULL,
+	.num_regions = 1,
+	.regions = {
+		{
+			.virt = (void *)SHM_START_ADDR,
+			.physmap = shm_physmap,
+			.size = SHM_SIZE,
+			.page_shift = 0xffffffff,
+			.page_mask = 0xffffffff,
+			.mem_flags = 0,
+			.ops = { NULL },
 		},
-		.node = { NULL },
-		.irq_num = 0,
-		.irq_info = NULL };
+	},
+	.node = { NULL },
+	.irq_num = 0,
+	.irq_info = NULL
+};
 
 static struct virtqueue *vq[2];
 static struct rpmsg_endpoint ep;
@@ -122,12 +101,8 @@ static struct rpc_ctx rpc;
 
 static unsigned char virtio_get_status(struct virtio_device *vdev)
 {
-	return VIRTIO_CONFIG_STATUS_DRIVER_OK;
-}
-
-void virtio_set_status(struct virtio_device *vdev, unsigned char status)
-{
-	sys_write8(status, VDEV_STATUS_ADDR);
+	return (IS_ENABLED(CONFIG_RPMSG_MASTER) ?
+		VIRTIO_CONFIG_STATUS_DRIVER_OK : sys_read8(VDEV_STATUS_ADDR));
 }
 
 static u32_t virtio_get_features(struct virtio_device *vdev)
@@ -135,10 +110,17 @@ static u32_t virtio_get_features(struct virtio_device *vdev)
 	return BIT(VIRTIO_RPMSG_F_NS);
 }
 
+#ifdef CONFIG_RPMSG_MASTER
+void virtio_set_status(struct virtio_device *vdev, unsigned char status)
+{
+	sys_write8(status, VDEV_STATUS_ADDR);
+}
+
 static void virtio_set_features(struct virtio_device *vdev, u32_t features)
 {
 	/* No need for implementation */
 }
+#endif
 
 static void virtio_notify(struct virtqueue *vq)
 {
@@ -152,9 +134,11 @@ static void virtio_notify(struct virtqueue *vq)
 
 const struct virtio_dispatch dispatch = {
 	.get_status = virtio_get_status,
-	.set_status = virtio_set_status,
 	.get_features = virtio_get_features,
+#ifdef CONFIG_RPMSG_MASTER
+	.set_status = virtio_set_status,
 	.set_features = virtio_set_features,
+	#endif
 	.notify = virtio_notify,
 };
 
@@ -166,26 +150,11 @@ static void ipm_callback(void *context, u32_t id, volatile void *data)
 
 /* Callback launch right after virtqueue_notification from rx_thread. */
 static int endpoint_cb(struct rpmsg_endpoint *ept, void *data, size_t len,
-		u32_t src, void *priv)
+		       u32_t src, void *priv)
 {
-	if (rpc.status != TX_ONGOING) {
-		/* First of all - send ACK. */
-		u8_t tmp = 0;
-
-		rpmsg_send(&ep, &tmp, sizeof(tmp));
-
-		/* We have just received data package. */
-		if (rpc.rx_callback) {
-			rpc.rx_callback(data, len);
-		}
-	} else {
-		u8_t *rec_data = data;
-
-		/* We were sending data - we received the response. */
-		rpc.status = RX_READY;
-		rpc.response = *rec_data;
-		k_sem_give(&rpc.data_tx_sem);
-		k_sem_give(&rpc.sync);
+	/* We have just received data package. */
+	if (rpc.rx_callback) {
+		rpc.rx_callback(data, len);
 	}
 
 	return RPMSG_SUCCESS;
@@ -225,54 +194,24 @@ static void rx_thread(void *p1, void *p2, void *p3)
 
 		if (status == 0) {
 			virtqueue_notification(IS_ENABLED(CONFIG_RPMSG_MASTER) ?
-					vq[0] : vq[1]);
+					       vq[0] : vq[1]);
 		}
 	}
 }
 
-/**@brief Send data to the second core.
- *
- * This function sends data to the another core. After sending it blocks
- * on the semaphore and waits for an ACK from other core.
- * ACK is NOT a return value from any function. It is just an indication
- * that secondary core has received message.
- *
- * @param[in] buff Data buffer.
- * @param[in] len Data length.
- * @param[in] timeout for operation in [ms].
- *
- * @retval 0 If the operation was successful.
- *           Otherwise, a (negative) error code is returned.
- */
-int ipc_transmit(const u8_t *buff, size_t buff_len, uint32_t timeout)
+int ipc_transmit(const u8_t *buff, size_t buff_len)
 {
 	int ret = 0;
 
-	k_sem_take(&rpc.sync, K_FOREVER);
-
-	rpc.status = TX_ONGOING;
 	ret = rpmsg_send(&ep, buff, buff_len);
 
 	if (ret > 0) {
-		/* Wait here until the response */
-		if (k_sem_take(&rpc.data_tx_sem, K_MSEC(timeout)) != 0) {
-			ret = -1;
-		} else {
-			ret = rpc.response;
-		}
+		ret = 0;
 	}
 
 	return ret;
 }
 
-/**@brief Initialize IPM
- *
- * This function initialize IPM instance. It is important
- * to set desire target in the rpmsg.c file (REMOTE or MASTER).
- *
- * @retval 0 If the operation was successful.
- *           Otherwise, a (negative) error code is returned.
- */
 int ipc_init(void)
 {
 	int err;
@@ -285,17 +224,14 @@ int ipc_init(void)
 	static struct rpmsg_virtio_shm_pool shpool;
 
 	/* Init semaphores. */
-	k_sem_init(&rpc.sync, 1, 1);
 	k_sem_init(&rpc.data_rx_sem, 0, 1);
-	k_sem_init(&rpc.data_tx_sem, 0, 1);
 	k_sem_init(&rpc.ept_sem, 0, 1);
-	rpc.status = RX_READY;
 
 	k_thread_create(&rx_thread_data, rx_thread_stack,
-				K_THREAD_STACK_SIZEOF(rx_thread_stack),
-				rx_thread, NULL, NULL, NULL,
-				K_PRIO_COOP(PRIORITY), 0,
-				K_NO_WAIT);
+			K_THREAD_STACK_SIZEOF(rx_thread_stack),
+			rx_thread, NULL, NULL, NULL,
+			K_PRIO_COOP(PRIORITY), 0,
+			K_NO_WAIT);
 
 	/* Libmetal setup. */
 	err = metal_init(&metal_params);
@@ -324,14 +260,14 @@ int ipc_init(void)
 
 	/* IPM setup. */
 	ipm_tx_handle = device_get_binding(IS_ENABLED(CONFIG_RPMSG_MASTER) ?
-			"IPM_1" : "IPM_0");
+					   "IPM_1" : "IPM_0");
 	if (!ipm_tx_handle) {
 		LOG_ERR("Could not get TX IPM device handle");
 		return -ENODEV;
 	}
 
 	ipm_rx_handle = device_get_binding(IS_ENABLED(CONFIG_RPMSG_MASTER) ?
-			"IPM_0" : "IPM_1");
+					   "IPM_0" : "IPM_1");
 	if (!ipm_rx_handle) {
 		LOG_ERR("Could not get RX IPM device handle");
 		return -ENODEV;
@@ -365,7 +301,7 @@ int ipc_init(void)
 	rvrings[1].vq = vq[1];
 
 	vdev.role = IS_ENABLED(CONFIG_RPMSG_MASTER) ?
-		RPMSG_MASTER : RPMSG_REMOTE;
+		    RPMSG_MASTER : RPMSG_REMOTE;
 
 	vdev.vrings_num = VRING_COUNT;
 	vdev.func = &dispatch;
@@ -374,7 +310,7 @@ int ipc_init(void)
 	if (IS_ENABLED(CONFIG_RPMSG_MASTER)) {
 		/* This step is only required if you are VirtIO device master.
 		 * Initialize the shared buffers pool.
-	 	 */
+		 */
 		rpmsg_virtio_init_shm_pool(&shpool, (void *)SHM_START_ADDR, SHM_SIZE);
 
 		err = rpmsg_init_vdev(&rvdev, &vdev, ns_bind_cb, shm_io, &shpool);
@@ -400,7 +336,7 @@ int ipc_init(void)
 		rdev = rpmsg_virtio_get_rpmsg_device(&rvdev);
 
 		err = rpmsg_create_ept(&ep, rdev, "k", RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
-				endpoint_cb, rpmsg_service_unbind);
+				       endpoint_cb, rpmsg_service_unbind);
 		if (err != 0) {
 			LOG_ERR("RPMSH endpoint cretate failed %d", err);
 		}
@@ -409,10 +345,6 @@ int ipc_init(void)
 	return 0;
 }
 
-/**@brief Deinitialize IPM.
- *
- * This function deinitialize IPM instance.
- */
 void ipc_deinit(void)
 {
 	rpmsg_deinit_vdev(&rvdev);
@@ -420,13 +352,6 @@ void ipc_deinit(void)
 	LOG_INF("IPC deinitialised");
 }
 
-/**@brief Register receive callback.
- *
- * Callback is fired when data is received.
- *
- * @param[in] data Buffer containing received data.
- * @param[in] len Data length.
- */
 void ipc_register_rx_callback(int (*rx_callback)(const u8_t *data, size_t len))
 {
 	rpc.rx_callback = rx_callback;
